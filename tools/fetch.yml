@@ -1,0 +1,44 @@
+name: fetch-argon
+on:
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fingerprint + curl battery
+        run: |
+          mkdir -p out
+          AID=9znB6dfumu3bWHPWiwwNx2
+          UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+          probe () {
+            local name="$1"; local url="$2"
+            echo "url: $url" > "out/${name}.meta"
+            curl -sS -L --max-time 40 -A "$UA" -D "out/${name}.hdr" -o "out/${name}.body" "$url" \
+              || echo "curl_failed rc=$?" >> "out/${name}.meta"
+            echo "size: $(wc -c < "out/${name}.body" 2>/dev/null || echo 0)" >> "out/${name}.meta"
+            head -c 300 "out/${name}.body" 2>/dev/null | tr -d '\000' >> "out/${name}.meta" || true
+          }
+          probe api-direct     "https://claude.ai/api/artifacts/$AID"
+          probe api-content    "https://claude.ai/api/artifacts/$AID/content"
+          probe api-singular   "https://claude.ai/api/artifact/$AID"
+          probe api-render     "https://claude.ai/api/render/artifact/$AID"
+          probe api-public     "https://claude.ai/api/public/artifacts/$AID"
+          probe api-versions   "https://claude.ai/api/artifacts/$AID/versions"
+          probe html-artifact  "https://claude.ai/artifact/$AID"
+          probe site-artifacts "https://claude.site/artifacts/$AID"
+          probe auth-status    "https://claude.ai/api/auth/status"
+          probe orgs           "https://claude.ai/api/organizations"
+      - name: Browser render
+        run: |
+          pip install playwright
+          playwright install --with-deps chromium
+          python3 scrape.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: argon-dump
+          path: out/
+          if-no-files-found: error
